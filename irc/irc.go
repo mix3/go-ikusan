@@ -2,77 +2,84 @@ package irc
 
 import (
 	"crypto/tls"
-	"fmt"
 	"time"
 
 	"github.com/mix3/go-ikusan/args"
-	ircevent "github.com/thoj/go-ircevent"
+	"github.com/mix3/go-irc"
 )
 
-var conn *Connection
+var conn *Conn
 
 type Channel struct {
 	ChannelKeyword string
 	JoinAt         time.Time
 }
 
-type Connection struct {
-	*ircevent.Connection
+type Conn struct {
+	*irc.Conn
 	joinChannels map[string]Channel
-	connected    bool
+	quit         chan struct{}
 }
 
 func Init(config *args.Result) error {
-	conn = &Connection{
-		ircevent.IRC(
-			config.IrcNickname(),
-			config.IrcUser(),
-		),
-		make(map[string]Channel),
-		false,
+	cfg := &irc.Config{
+		Nick:     config.IrcNickname(),
+		User:     config.IrcUser(),
+		SSL:      config.EnableSsl(),
+		Interval: time.Duration(config.IrcPostInterval()) * time.Second,
 	}
-	conn.UseTLS = config.EnableSsl()
 	if config.EnableSsl() && config.InsecureSkipVerify() {
-		conn.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+		cfg.SSLConfig = &tls.Config{InsecureSkipVerify: true}
 	}
-	if config.IrcKeyword() != "" {
-		conn.Password = config.IrcKeyword()
-	}
-	err := conn.Connect(fmt.Sprintf(
-		"%s:%d",
-		config.IrcServer(),
-		config.IrcPort(),
-	))
+
+	ircconn, err := irc.New(cfg)
 	if err != nil {
 		return err
 	}
-	conn.connected = true
-	return nil
-}
 
-func GetConn() *Connection {
-	if conn != nil && conn.connected {
-		return conn
+	var quit chan struct{}
+	quit, err = ircconn.Connect(
+		config.IrcServer(),
+		config.IrcPort(),
+		config.IrcKeyword(),
+	)
+	if err != nil {
+		return err
 	}
+
+	conn = &Conn{
+		ircconn,
+		make(map[string]Channel),
+		quit,
+	}
+
 	return nil
 }
 
-func (conn *Connection) IsJoined(channel string) bool {
+func GetConn() *Conn {
+	return conn
+}
+
+func (conn *Conn) GetQuitChan() chan struct{} {
+	return conn.quit
+}
+
+func (conn *Conn) IsJoined(channel string) bool {
 	_, ok := conn.joinChannels[channel]
 	return ok
 }
 
-func (conn *Connection) Join(channel string) {
-	conn.Connection.Join(channel)
+func (conn *Conn) Join(channel string) {
+	conn.Conn.Join(channel)
 	conn.joinChannels[channel] = Channel{"", time.Now()}
 }
 
-func (conn *Connection) Part(channel string) {
-	conn.Connection.Part(channel)
+func (conn *Conn) Part(channel string) {
+	conn.Conn.Part(channel)
 	delete(conn.joinChannels, channel)
 }
 
-func (conn *Connection) ChannelList() []string {
+func (conn *Conn) ChannelList() []string {
 	list := []string{}
 	for k, _ := range conn.joinChannels {
 		list = append(list, k)

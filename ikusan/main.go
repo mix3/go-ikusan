@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/mix3/go-ikusan/args"
 	"github.com/mix3/go-ikusan/irc"
@@ -29,9 +30,27 @@ func init() {
 
 func main() {
 	n := server.New("")
+	Config := args.GetConfig()
 	go func() {
-		Config := args.GetConfig()
 		n.Run(fmt.Sprintf("%s:%d", Config.HttpHost(), Config.HttpPort()))
 	}()
-	irc.GetConn().Loop()
+	conn := irc.GetConn()
+	quit := conn.GetQuitChan()
+	var err error
+	for {
+		select {
+		case <-quit:
+			conn.Logger().Debugf("[INFO   ] quit")
+			for {
+				conn.Logger().Infof("[INFO   ] reconnecting")
+				quit, err = conn.Reconnect()
+				if err == nil {
+					conn.Logger().Infof("[INFO   ] reconnected")
+					break
+				}
+				conn.Logger().Warnf("[ERROR  ] fail reconnection")
+				time.Sleep(time.Duration(Config.IrcReconnectInterval()) * time.Second)
+			}
+		}
+	}
 }
