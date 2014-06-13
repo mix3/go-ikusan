@@ -29,8 +29,8 @@ func init() {
 }
 
 func main() {
-	n := server.New("")
 	Config := args.GetConfig()
+	n := server.New(Config.Mount())
 	go func() {
 		n.Run(fmt.Sprintf("%s:%d", Config.HttpHost(), Config.HttpPort()))
 	}()
