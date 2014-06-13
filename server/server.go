@@ -13,9 +13,11 @@ import (
 )
 
 func New(mount string) *negroni.Negroni {
+	Config := args.GetConfig()
 	n := negroni.New()
 	n.Use(negroni.NewRecovery())
 	n.Use(negroni.NewLogger())
+	n.Use(NewReverseProxy(Config.ReverseProxy()...))
 	n.UseHandler(NewRouter(mount))
 	return n
 }
