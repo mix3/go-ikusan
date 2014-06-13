@@ -187,9 +187,9 @@ func Help() string {
 		which lets most server backends bind the any (*) interface. This
 		option doesn't mean anything if the server does not support TCP
 		socket.
-	-p, --port (default: 4979)
+	-p, --port (default: 19300)
 		The port number a TCP based server daemon listens on. Defaults to
-		5000. This option doesn't mean anything if the server does not support
+		19300. This option doesn't mean anything if the server does not support
 		TCP socket.
 	-S, --Server
 		irc server address.
