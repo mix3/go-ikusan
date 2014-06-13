@@ -28,11 +28,10 @@ func (rp *reverseProxy) ServeHTTP(rw http.ResponseWriter, r *http.Request, next 
 		addr := r.Header.Get("X-Real-IP")
 		if addr == "" {
 			addr = r.Header.Get("X-Forwarded-For")
-			if addr == "" {
-				addr = r.RemoteAddr
-			}
 		}
-		r.RemoteAddr = addr
+		if addr != "" {
+			r.RemoteAddr = addr
+		}
 	}
 	next(rw, r)
 }
