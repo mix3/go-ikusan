@@ -24,6 +24,9 @@ func New(mount string) *negroni.Negroni {
 
 func NewRouter(mount string) http.Handler {
 	router := mux.NewRouter()
+	if mount != "" {
+		router.HandleFunc("/"+mount, IndexHandler).Methods("GET")
+	}
 	subrouter := router.PathPrefix("/" + mount).Subrouter()
 	subrouter.HandleFunc("/", IndexHandler).Methods("GET")
 	subrouter.HandleFunc("/channel_list", ChannelListHandler).Methods("GET")
