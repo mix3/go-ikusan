@@ -59,11 +59,12 @@ func ChannelListHandler(w http.ResponseWriter, req *http.Request) {
 func JoinHandler(w http.ResponseWriter, req *http.Request) {
 	conn := irc.GetConn()
 	channel := req.FormValue("channel")
+	channelKeyword := req.FormValue("channel_keyword")
 	if conn.IsJoined(channel) {
 		render(w, 403, "joinned channel: %s\n", channel)
 		return
 	}
-	conn.Join(channel)
+	conn.Join(channel, channelKeyword)
 	render(w, 200, "join success channel: %s\n", channel)
 }
 

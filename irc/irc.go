@@ -27,6 +27,15 @@ func Init(config *args.Result) error {
 		User:     config.IrcUser(),
 		SSL:      config.EnableSsl(),
 		Interval: time.Duration(config.IrcPostInterval()) * time.Second,
+		Callback: func(conn *irc.Conn, e *irc.Event) {
+			switch e.Code {
+			case "001":
+				conn_ := GetConn()
+				for channel, channelInfo := range conn_.joinChannels {
+					conn_.Join(channel, channelInfo.ChannelKeyword)
+				}
+			}
+		},
 	}
 	if config.EnableSsl() && config.InsecureSkipVerify() {
 		cfg.SSLConfig = &tls.Config{InsecureSkipVerify: true}
@@ -69,9 +78,17 @@ func (conn *Conn) IsJoined(channel string) bool {
 	return ok
 }
 
-func (conn *Conn) Join(channel string) {
-	conn.Conn.Join(channel)
-	conn.joinChannels[channel] = Channel{"", time.Now()}
+func (conn *Conn) Join(channel string, option ...string) {
+	keyword := ""
+	if 0 < len(option) {
+		keyword = option[0]
+	}
+	if keyword != "" {
+		conn.Conn.Join(channel + " " + keyword)
+	} else {
+		conn.Conn.Join(channel)
+	}
+	conn.joinChannels[channel] = Channel{keyword, time.Now()}
 }
 
 func (conn *Conn) Part(channel string) {
