@@ -39,7 +39,15 @@ func NewRouter(mount string) http.Handler {
 }
 
 func IndexHandler(w http.ResponseWriter, req *http.Request) {
-	render(w, 200, "Welcome!\n")
+	w.WriteHeader(200)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	Config := args.GetConfig()
+	mount := Config.Mount()
+	path := ""
+	if mount != "" {
+		path = "/" + mount
+	}
+	indexTemplate.Execute(w, path)
 }
 
 func ChannelListHandler(w http.ResponseWriter, req *http.Request) {
