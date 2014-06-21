@@ -21,22 +21,25 @@ type Conn struct {
 	quit         chan struct{}
 }
 
+func (conn *Conn) Callback(e *irc.Event) {
+	conn.DefaultCallback(e)
+	switch e.Code {
+	case "001":
+		conn_ := GetConn()
+		for channel, channelInfo := range conn_.joinChannels {
+			conn_.Join(channel, channelInfo.ChannelKeyword)
+		}
+	}
+}
+
 func Init(config *args.Result) error {
 	cfg := &irc.Config{
 		Nick:     config.IrcNickname(),
 		User:     config.IrcUser(),
 		SSL:      config.EnableSsl(),
 		Interval: time.Duration(config.IrcPostInterval()) * time.Second,
-		Callback: func(conn *irc.Conn, e *irc.Event) {
-			switch e.Code {
-			case "001":
-				conn_ := GetConn()
-				for channel, channelInfo := range conn_.joinChannels {
-					conn_.Join(channel, channelInfo.ChannelKeyword)
-				}
-			}
-		},
 	}
+
 	if config.EnableSsl() && config.InsecureSkipVerify() {
 		cfg.SSLConfig = &tls.Config{InsecureSkipVerify: true}
 	}
@@ -45,9 +48,15 @@ func Init(config *args.Result) error {
 	if err != nil {
 		return err
 	}
+	conn = &Conn{
+		ircconn,
+		make(map[string]Channel),
+		nil,
+	}
+	conn.SetEmbed(conn)
 
 	var quit chan struct{}
-	quit, err = ircconn.Connect(
+	quit, err = conn.Connect(
 		config.IrcServer(),
 		config.IrcPort(),
 		config.IrcKeyword(),
@@ -56,11 +65,7 @@ func Init(config *args.Result) error {
 		return err
 	}
 
-	conn = &Conn{
-		ircconn,
-		make(map[string]Channel),
-		quit,
-	}
+	conn.quit = quit
 
 	return nil
 }
