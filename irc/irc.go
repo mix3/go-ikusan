@@ -2,37 +2,37 @@ package irc
 
 import (
 	"crypto/tls"
+	"fmt"
+	"log"
 	"time"
 
 	"github.com/mix3/go-ikusan/args"
+	"github.com/mix3/go-ikusan/channel"
 	"github.com/mix3/go-irc"
 )
 
-var conn *Conn
+var conn *MyConn
 
-type Channel struct {
-	ChannelKeyword string
-	JoinAt         time.Time
-}
-
-type Conn struct {
+type MyConn struct {
 	*irc.Conn
-	joinChannels map[string]Channel
-	quit         chan struct{}
 }
 
-func (conn *Conn) Callback(e *irc.Event) {
-	conn.DefaultCallback(e)
+func callbackFunc(conn *irc.Conn, e *irc.Event) {
+	irc.DefaultCallback(conn, e)
 	switch e.Code {
 	case "001":
-		conn_ := GetConn()
-		for channel, channelInfo := range conn_.joinChannels {
-			conn_.Join(channel, channelInfo.ChannelKeyword)
+		for _, k := range channel.List() {
+			v, _ := channel.Get(k)
+			if v.ChannelKeyword != "" {
+				conn.Join(k + " " + v.ChannelKeyword)
+			} else {
+				conn.Join(k)
+			}
 		}
 	}
 }
 
-func Init(config *args.Result) error {
+func create(config *args.Result) *MyConn {
 	cfg := &irc.Config{
 		Nick:     config.IrcNickname(),
 		User:     config.IrcUser(),
@@ -44,67 +44,71 @@ func Init(config *args.Result) error {
 		cfg.SSLConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
-	ircconn, err := irc.New(cfg)
+	c, err := irc.New(cfg)
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
-	conn = &Conn{
-		ircconn,
-		make(map[string]Channel),
-		nil,
-	}
-	conn.SetEmbed(conn)
 
-	var quit chan struct{}
-	quit, err = conn.Connect(
+	c.Callbacker(callbackFunc)
+
+	return &MyConn{c}
+}
+
+func Run(config *args.Result) {
+	conn = create(config)
+
+	quit, err := conn.Connect(
 		config.IrcServer(),
 		config.IrcPort(),
 		config.IrcKeyword(),
 	)
+
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 
-	conn.quit = quit
-
-	return nil
+	for {
+		select {
+		case <-quit:
+			conn.Logger().Debugf("[INFO   ] quit")
+			for {
+				conn.Logger().Infof("[INFO   ] reconnecting")
+				quit, err = conn.Reconnect()
+				if err == nil {
+					conn.Logger().Infof("[INFO   ] reconnected")
+					break
+				}
+				conn.Logger().Warnf("[ERROR  ] fail reconnection")
+				time.Sleep(time.Duration(config.IrcReconnectInterval()) * time.Second)
+			}
+		}
+	}
 }
 
-func GetConn() *Conn {
-	return conn
+func Conn() (*MyConn, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("conn is null")
+	}
+	if !conn.IsConnected() {
+		return nil, fmt.Errorf("disconnected")
+	}
+	return conn, nil
 }
 
-func (conn *Conn) GetQuitChan() chan struct{} {
-	return conn.quit
-}
-
-func (conn *Conn) IsJoined(channel string) bool {
-	_, ok := conn.joinChannels[channel]
-	return ok
-}
-
-func (conn *Conn) Join(channel string, option ...string) {
+func (mc *MyConn) Join(channelName string, option ...string) {
 	keyword := ""
 	if 0 < len(option) {
 		keyword = option[0]
 	}
 	if keyword != "" {
-		conn.Conn.Join(channel + " " + keyword)
+		mc.Conn.Join(channelName + " " + keyword)
 	} else {
-		conn.Conn.Join(channel)
+		mc.Conn.Join(channelName)
 	}
-	conn.joinChannels[channel] = Channel{keyword, time.Now()}
+	channel.Set(channelName, keyword)
 }
 
-func (conn *Conn) Part(channel string) {
-	conn.Conn.Part(channel)
-	delete(conn.joinChannels, channel)
-}
-
-func (conn *Conn) ChannelList() []string {
-	list := []string{}
-	for k, _ := range conn.joinChannels {
-		list = append(list, k)
-	}
-	return list
+func (mc *MyConn) Part(channelName string) {
+	mc.Conn.Part(channelName)
+	channel.Del(channelName)
 }

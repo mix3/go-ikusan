@@ -2,23 +2,23 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 	"github.com/mix3/go-ikusan/args"
+	ch "github.com/mix3/go-ikusan/channel"
 	"github.com/mix3/go-ikusan/irc"
 )
 
-func New(mount string) *negroni.Negroni {
-	Config := args.GetConfig()
+func New(config *args.Result) *negroni.Negroni {
 	n := negroni.New()
 	n.Use(negroni.NewRecovery())
 	n.Use(negroni.NewLogger())
-	n.Use(NewReverseProxy(Config.ReverseProxy()...))
-	n.UseHandler(NewRouter(mount))
+	n.Use(NewReverseProxy(config.ReverseProxy()...))
+	n.Use(NewCheckConnection())
+	n.UseHandler(NewRouter(config.Mount()))
 	return n
 }
 
@@ -51,16 +51,15 @@ func IndexHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func ChannelListHandler(w http.ResponseWriter, req *http.Request) {
-	conn := irc.GetConn()
-	message := strings.Join(conn.ChannelList(), "\n") + "\n"
+	message := strings.Join(ch.List(), "\n") + "\n"
 	render(w, 200, message)
 }
 
 func JoinHandler(w http.ResponseWriter, req *http.Request) {
-	conn := irc.GetConn()
+	conn, _ := irc.Conn()
 	channel := req.FormValue("channel")
 	channelKeyword := req.FormValue("channel_keyword")
-	if conn.IsJoined(channel) {
+	if _, ok := ch.Get(channel); ok {
 		render(w, 403, "joinned channel: %s\n", channel)
 		return
 	}
@@ -73,9 +72,9 @@ func LeaveHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func PartHandler(w http.ResponseWriter, req *http.Request) {
-	conn := irc.GetConn()
+	conn, _ := irc.Conn()
 	channel := req.FormValue("channel")
-	if !conn.IsJoined(channel) {
+	if _, ok := ch.Get(channel); !ok {
 		render(w, 404, "not joinned channel: %s\n", channel)
 		return
 	}
@@ -84,36 +83,35 @@ func PartHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func NoticeHandler(w http.ResponseWriter, req *http.Request) {
-	conn := irc.GetConn()
+	conn, _ := irc.Conn()
 	channel := req.FormValue("channel")
-	Config := args.GetConfig()
-	if Config.NoPostWithJoin() {
-		if !conn.IsJoined(channel) {
+	config := args.GetConfig()
+	if config.NoPostWithJoin() {
+		if _, ok := ch.Get(channel); !ok {
 			render(w, 404, "not joinned channel: %s\n", channel)
 			return
 		}
 	} else {
 		conn.Join(channel)
 	}
-	message := truncateMessage(req.FormValue("message"), Config.MaxLength())
+	message := truncateMessage(req.FormValue("message"), config.MaxLength())
 	conn.Notice(channel, message)
 	render(w, 200, "message sent channel: %s %s\n", channel, message)
 }
 
 func PrivmsgHandler(w http.ResponseWriter, req *http.Request) {
-	log.Printf("Privmsg")
-	conn := irc.GetConn()
+	conn, _ := irc.Conn()
 	channel := req.FormValue("channel")
-	Config := args.GetConfig()
-	if Config.NoPostWithJoin() {
-		if !conn.IsJoined(channel) {
+	config := args.GetConfig()
+	if config.NoPostWithJoin() {
+		if _, ok := ch.Get(channel); !ok {
 			render(w, 404, "not joinned channel: %s\n", channel)
 			return
 		}
 	} else {
 		conn.Join(channel)
 	}
-	message := truncateMessage(req.FormValue("message"), Config.MaxLength())
+	message := truncateMessage(req.FormValue("message"), config.MaxLength())
 	conn.Privmsg(channel, message)
 	render(w, 200, "message sent channel: %s %s\n", channel, message)
 }
