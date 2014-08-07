@@ -177,7 +177,7 @@ func GetConfig() *Result {
 func Usage() string {
 	return `Usage:
 	# connect to chat.freenode.net
-	ikachan -S chat.freenode.net
+	ikusan -S chat.freenode.net
 `
 }
 
